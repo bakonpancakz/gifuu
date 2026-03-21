@@ -285,20 +285,21 @@ func POST_Animations(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// --- Find Suitable Media Stream ---
-		//	We only accept images if it's the only available stream otherwise
-		// 	video files with an embedded thumbnail will become an image
+		// --- Find Media Stream ---
+		//	isVideo: Only video streams (AV1, MP4, etc.)
+		//	isImage: Only select image streams if it's the only stream available
 		for _, s := range ProbeResults.Streams {
-			if s.CodecType == "video" || (s.CodecType == "image" && len(ProbeResults.Streams) == 1) {
-				if false ||
-					s.Height < MEDIA_MIN_HEIGHT || s.Height > MEDIA_MAX_HEIGHT ||
-					s.Width < MEDIA_MIN_WIDTH || s.Width > MEDIA_MAX_WIDTH ||
-					float64(s.Duration) > float64(MEDIA_MAX_DURATION) {
-					continue
-				}
+			isVideo := (s.CodecType == "video")
+			isImage := (s.CodecType == "image" && len(ProbeResults.Streams) == 1)
+			isValid := true &&
+				s.Height >= MEDIA_MIN_HEIGHT &&
+				s.Height <= MEDIA_MAX_HEIGHT &&
+				s.Width >= MEDIA_MIN_WIDTH &&
+				s.Width <= MEDIA_MAX_WIDTH &&
+				float64(s.Duration) <= float64(MEDIA_MAX_DURATION)
 
+			if isValid && (isVideo || isImage) && (ProbeStream == nil || s.Duration > ProbeStream.Duration) {
 				ProbeStream = &s
-				break
 			}
 		}
 		if ProbeStream == nil {
@@ -306,8 +307,9 @@ func POST_Animations(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// --- Calculate Pipeline ---
-		// 	Metadata fields and sticker detection
+		// --- Detect Properties ---
+		// 	* Enable sticker mode (raise quality) if it's a still
+		// 	* Approximate final height and width
 		MediaSticker = (ProbeStream.NumberFrames < 2)
 		d := ternary(MediaSticker, IMAGE_LARGE_SIZE, VIDEO_LARGE_SIZE)
 		s := float64(min(ProbeStream.Height, d)) / float64(ProbeStream.Height)
@@ -337,13 +339,13 @@ func POST_Animations(w http.ResponseWriter, r *http.Request) {
 
 		cmd := exec.CommandContext(encodeCtx,
 			"ffmpeg",
-			"-hide_banner",
 			"-loglevel", "verbose",
-			"-stats", "-an", "-sn", "-y",
-			"-i", PathUpload,
+			"-hide_banner",
+			"-stats",
 
+			"-an", "-sn", "-y", "-i", PathUpload,
 			"-filter_complex", fmt.Sprintf(""+
-				"[0:v]format=rgba[fg];[fg]split[fg1][fg2];[fg2]drawbox=x=0:y=0:w=iw:h=ih:color=%s:t=fill[bg];[bg][fg1]overlay[base];"+
+				"[0:v:%d]format=rgba[fg];[fg]split[fg1][fg2];[fg2]drawbox=x=0:y=0:w=iw:h=ih:color=%s:t=fill[bg];[bg][fg1]overlay[base];"+
 				"[base]split=4[v1][v2][v3][v4];"+
 				"[v1]%sscale=-2:%d:flags=lanczos,fps=%d[v1o];"+
 				"[v2]%sscale=-2:%d:flags=lanczos,fps=%d[v2o];"+
@@ -351,6 +353,7 @@ func POST_Animations(w http.ResponseWriter, r *http.Request) {
 				"[v4]%sscale=%d:%d:flags=neighbor,fps=%d[v4o];",
 
 				// Import
+				ProbeStream.Index,
 				MEDIA_BACKGROUND,
 
 				// Export: Preview
