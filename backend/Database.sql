@@ -197,9 +197,11 @@ BEGIN
      *  INSERT INTO kvs VALUES ('gifuu_production', 'true');
      */
     IF EXISTS (SELECT FROM kvs WHERE key = 'gifuu_production') THEN
-        RAISE NOTICE 'Production mode detected!';
+        RAISE NOTICE 'Mode: Production';
 	    UPDATE kvs SET value = _VERSION                WHERE key = 'gifuu_version';
 	    UPDATE kvs SET value = CURRENT_TIMESTAMP::TEXT WHERE key = 'gifuu_updated';
-	END IF;
+    ELSE
+        RAISE NOTICE 'Mode: Development';
+    END IF;
 
 END $MAIN$;
