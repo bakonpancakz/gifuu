@@ -40,10 +40,9 @@ func GET_Animations_ID(w http.ResponseWriter, r *http.Request) {
 		FROM gifuu.upload u
 		LEFT JOIN gifuu.upload_tag ut ON ut.gif_id = u.id
 		LEFT JOIN gifuu.tag t ON t.id = ut.tag_id
-		WHERE u.id = $1 AND u.rating < $2
+		WHERE u.id = $1
 		GROUP BY u.id`,
 		givenID,
-		tools.MODEL_THRESHOLD_HIDE,
 	).Scan(&Output)
 
 	if err == pgx.ErrNoRows {
